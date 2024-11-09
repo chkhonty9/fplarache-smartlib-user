@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fplarache-smart-lib-user
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fplarache-smart-lib-user
+  template:
+    metadata:
+      labels:
+        app: fplarache-smart-lib-user-service
+    spec:
+      containers:
+        - name: fplarache-smart-lib-user-container
+          image: chkhonty9/fplarache-smart-lib-user:latest
+          ports:
+            - containerPort: 8080

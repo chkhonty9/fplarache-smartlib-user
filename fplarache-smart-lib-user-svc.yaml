@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fplarache-smart-lib-user
+spec:
+  type: LoadBalancer
+  selector:
+    app: fplarache-smart-lib-user
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
