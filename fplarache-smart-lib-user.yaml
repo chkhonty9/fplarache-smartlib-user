@@ -16,4 +16,4 @@ spec:
         - name: fplarache-smart-lib-user-container
           image: chkhonty9/fplarache-smart-lib-user:latest
           ports:
-            - containerPort: 8080
+            - containerPort: 8081
