@@ -54,7 +54,7 @@ jobs:
           cmd: java -jar target/*.jar
           image-short-name: repo
           image-prefix: ${{ github.sha }}
-          image-tag: latest,${{ github.sha }}
+          image-tag: ${{ github.sha }}
           ecr-registry: ${{ secrets.AWS_ECR_REGISTRY }}
 
       # Step 7: Deploy ECS - Maven
