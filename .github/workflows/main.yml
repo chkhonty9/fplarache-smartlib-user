@@ -1,3 +1,0 @@
-name: User Actions
-on:
-  workflow_dispatch # Change to `push` for automatic runs on code push s
