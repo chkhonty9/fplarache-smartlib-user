@@ -1,4 +1,4 @@
-name: Deploy to Amazon ECS
+name: Deploy Maven Project to ECS
 
 on:
   push:
@@ -8,22 +8,20 @@ on:
 env:
   AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
   ECR_REPOSITORY: dev-fplarache-smartlib-users-repo
-  ECS_SERVICE: dev-fplarache-smartlib-users-service
   ECS_CLUSTER: dev-fplarache-smartlib-users-cluster
-  ECS_TASK_DEFINITION: ecs/dev-users-task-definition.json # Path to the ECS task definition
-  CONTAINER_NAME: users-container
   ECS_TASK_DEFINITION_FAMILY: dev-users-task-definition
+  CONTAINER_NAME: users-container
 
 jobs:
   deploy:
-    name: Deploy
+    name: Deploy Maven Project
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set Up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: "17"
@@ -34,72 +32,60 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y maven
 
-      - name: Build the project with Maven
-        run: |
-          mvn clean package -DskipTests
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@0e613a0980cbf65ed5b322eb7a1e075d28913a83
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
 
       - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@62f4f872db3836360b72999f4b87f1ff13310f3a
+        uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, tag, and push image to Amazon ECR
-        id: build-image
+      - name: Build and Push Docker Image to ECR
         env:
           ECR_REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: latestgir
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
 
-      - name: Fill in the new image ID in the Amazon ECS task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@c804dfbdd57f713b6c079302a4c01db7017a36fc
+      - name: Render ECS Task Definition
+        id: render-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ env.ECS_TASK_DEFINITION }} # Correct path
+          task-definition: ecs/dev-users-task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.build-image.outputs.image }}
+          image: ${{ env.image }}
 
-      - name: Ensure ECS Cluster is Active
-        run: |
-          cluster_status=$(aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --query "clusters[0].status" --output text)
-          if [[ "$cluster_status" == "INACTIVE" ]]; then
-            aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }}
-          fi
-
-      - name: Ensure ECS Service exists or update it
+      - name: Ensure ECS Service Exists or Update
         run: |
           set -e
-          service_exists=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].serviceName" --output text || echo "not_found")
-
-          # Log task definition and service status for debugging
-          echo "Task Definition: ${{ steps.task-def.outputs.task-definition }}"
-          echo "Service Exists: $service_exists"
-
-          if [[ "$service_exists" == "not_found" ]]; then
+          SERVICE_EXISTS=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_CLUSTER-service --query "services[0].serviceName" --output text || echo "not_found")
+          if [[ "$SERVICE_EXISTS" == "not_found" ]]; then
+            echo "Creating ECS Service"
             aws ecs create-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --service-name ${{ env.ECS_SERVICE }} \
-              --task-definition ${{ steps.task-def.outputs.task-definition }} \
+              --cluster $ECS_CLUSTER \
+              --service-name $ECS_CLUSTER-service \
+              --task-definition ${{ steps.render-task.outputs.task-definition }} \
+              --desired-count 1 \
               --launch-type FARGATE
           else
+            echo "Updating ECS Service"
             aws ecs update-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --service ${{ env.ECS_SERVICE }} \
-              --task-definition ${{ steps.task-def.outputs.task-definition }}
+              --cluster $ECS_CLUSTER \
+              --service $ECS_CLUSTER-service \
+              --task-definition ${{ steps.render-task.outputs.task-definition }}
           fi
 
-      - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@df9643053eda01f169e64a0e60233aacca83799a
+      - name: Deploy ECS Task Definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
+          task-definition: ${{ steps.render-task.outputs.task-definition }}
+          service: $ECS_CLUSTER-service
+          cluster: $ECS_CLUSTER
           wait-for-service-stability: true
