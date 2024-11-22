@@ -58,33 +58,32 @@ jobs:
       - name: Register Task Definition
         id: register-task
         run: |
-          TASK_DEFINITION=$(jq -n --arg IMAGE_URI "${{ secrets.AWS_ECR_REGISTRY }}/dev-fplarache-smartlib-user-repository:latest" \
+          TASK_DEFINITION=$(jq -n --arg IMAGE_URI "***/dev-fplarache-smartlib-user-repository:latest" \
           '{
-            family: "dev-smartlib-user-td",
-            networkMode: "awsvpc",
-            containerDefinitions: [
-              {
-                name: "dev-smartlib-user-container",
-                image: $IMAGE_URI,
-                memory: 512,
-                cpu: 256,
-                essential: true,
-                logConfiguration: {
-                  logDriver: "awslogs",
-                  options: {
-                    "awslogs-group": "/ecs/dev-smartlib-user",
-                    "awslogs-region": env.AWS_REGION,
-                    "awslogs-stream-prefix": "ecs"
-                  }
-                }
+          family: "dev-smartlib-user-td",
+          networkMode: "awsvpc",
+          containerDefinitions: [
+            {
+            name: "dev-smartlib-user-container",
+            image: $IMAGE_URI,
+            memory: 512,
+            cpu: 256,
+            essential: true,
+            logConfiguration: {
+              logDriver: "awslogs",
+              options: {
+                "awslogs-group": "/ecs/dev-smartlib-user","awslogs-region": env.AWS_REGION,
+                "awslogs-stream-prefix": "ecs"
               }
-            ],
-            requiresCompatibilities: ["FARGATE"],
-            cpu: "256",
-            memory: "512"
+            }
+           }
+          ],
+          requiresCompatibilities: ["FARGATE"],
+          cpu: "256",
+          memory: "512",
+          executionRoleArn: "arn:aws:iam::aws:policy/service-role/AmazonECS_FargateTaskExecutionRolePolicy"
           }')
           echo "$TASK_DEFINITION" > ecs/task-definition.json
-
           NEW_TASK_DEFINITION=$(aws ecs register-task-definition --cli-input-json file://ecs/task-definition.json --query "taskDefinition.taskDefinitionArn" --output text)
           echo "NEW_TASK_DEFINITION=$NEW_TASK_DEFINITION" >> $GITHUB_ENV
 
