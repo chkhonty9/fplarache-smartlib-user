@@ -83,9 +83,9 @@ jobs:
             cpu: "256",
             memory: "512"
           }')
-          echo "$TASK_DEFINITION" > task-definition.json
+          echo "$TASK_DEFINITION" > ecs/task-definition.json
 
-          NEW_TASK_DEFINITION=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query "taskDefinition.taskDefinitionArn" --output text)
+          NEW_TASK_DEFINITION=$(aws ecs register-task-definition --cli-input-json file://ecs/task-definition.json --query "taskDefinition.taskDefinitionArn" --output text)
           echo "NEW_TASK_DEFINITION=$NEW_TASK_DEFINITION" >> $GITHUB_ENV
 
       # Step 8: Update ECS Service
