@@ -88,7 +88,6 @@ jobs:
               --cluster ${{ env.ECS_CLUSTER }} \
               --service-name ${{ env.ECS_SERVICE }} \
               --task-definition ${{ steps.task-def.outputs.task-definition }} \
-              --desired-count 1 \
               --launch-type FARGATE
           else
             aws ecs update-service \
