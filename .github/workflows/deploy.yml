@@ -76,20 +76,21 @@ jobs:
 
       - name: Ensure ECS Service exists or update it
         run: |
+          set -e
           service_exists=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].serviceName" --output text || echo "not_found")
-            if [[ "$service_exists" == "not_found" ]]; then
-              aws ecs create-service \
-                --cluster ${{ env.ECS_CLUSTER }} \
-                --service-name ${{ env.ECS_SERVICE }} \
-                --task-definition ${{ steps.task-def.outputs.task-definition }} \
-                --desired-count 1 \
-                --launch-type FARGATE
-            else
-              aws ecs update-service \
+          if [[ "$service_exists" == "not_found" ]]; then
+            aws ecs create-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service-name ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.task-def.outputs.task-definition }} \
+            --desired-count 1 \
+            --launch-type FARGATE
+          else
+            aws ecs update-service \
               --cluster ${{ env.ECS_CLUSTER }} \
-              --service ${{ env.ECS_SERVICE }} \
+              -service ${{ env.ECS_SERVICE }} \
               --task-definition ${{ steps.task-def.outputs.task-definition }}
-            fi
+          fi
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@df9643053eda01f169e64a0e60233aacca83799a
