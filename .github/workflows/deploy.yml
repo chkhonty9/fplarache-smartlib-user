@@ -1,111 +1,103 @@
-name: Deploy ECS Service
+name: Deploy Maven Project to ECS
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+-dev"
+      - "v[0-9]+.[0-9]+.[0-9]+-prod"
 
 env:
-  AWS_REGION: eu-north-1
-  ECR_REPOSITORY: dev-fplarache-smartlib-users-repo
-  ECS_CLUSTER: dev-fplarache-smartlib-users-cluster
-  ECS_SERVICE: dev-fplarache-smartlib-users-service
-  ECS_TASK_DEFINITION_FAMILY: dev-users-task-definition
+  BEFORE_SHA: ${{ github.event.before }}
 
 jobs:
   deploy:
+    name: "Deploy Maven Project"
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
+      # Step 1: Checkout Repository
       - name: Checkout Code
         uses: actions/checkout@v3
-
-      # Step 2: Set up Java (JDK)
-      - name: Set up JDK
-        uses: actions/setup-java@v3
         with:
-          distribution: "temurin"
-          java-version: "17"
+          fetch-depth: 0
 
-      # Step 3: Cache Maven dependencies
-      - name: Cache Maven Repository
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+      # Step 2: Extract Branch Name
+      - name: Extract Branch Name
+        shell: bash
+        run: echo "branch=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+        id: extract_branch
 
-      # Step 4: Build the Maven project
-      - name: Build with Maven
+      # Step 3: Set Variables Based on Environment
+      - name: Set Variables
+        id: vars
         run: |
-          mvn clean package -DskipTests
+          if [[ "${{ github.ref }}" == *-dev ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "awsAccessKey=DEV_ADMIN_AWS_ACCESS_KEY" >> $GITHUB_OUTPUT
+            echo "awsSecretKey=DEV_ADMIN_AWS_SECRET_KEY" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == *-prod ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "awsAccessKey=PROD_ADMIN_AWS_ACCESS_KEY" >> $GITHUB_OUTPUT
+            echo "awsSecretKey=PROD_ADMIN_AWS_SECRET_KEY" >> $GITHUB_OUTPUT
+          fi
+
+      # Step 4: Configure AWS Credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets[steps.vars.outputs.awsAccessKey] }}
+          aws-secret-access-key: ${{ secrets[steps.vars.outputs.awsSecretKey] }}
+          aws-region: "eu-north-1"
 
       # Step 5: Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # Step 6: Build Docker image
+      # Step 6: Build and Push Docker Image
       - name: Build and Push Docker Image
         run: |
-          IMAGE_NAME=${{ secrets.AWS_ECR_REGISTRY }}/$ECR_REPOSITORY:latest
-          docker build -t $IMAGE_NAME .
-          docker push $IMAGE_NAME
+          IMAGE_NAME=dev-fplarache-smartlib-user-repository:latest
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/$IMAGE_NAME .
+          docker push ${{ steps.login-ecr.outputs.registry }}/$IMAGE_NAME
 
-      # Step 7: Register New Task Definition Revision
-      - name: Register New Task Definition Revision
-        id: register-task
+      # Step 7: Deploy to ECS
+      - name: Deploy ECS Service
         run: |
-          TASK_JSON=$(jq -n --arg IMAGE "${{ secrets.AWS_ECR_REGISTRY }}/$ECR_REPOSITORY:latest" \
-          --arg FAMILY "$ECS_TASK_DEFINITION_FAMILY" \
-          --arg NAME "users-container" \
-          '{
-            family: $FAMILY,
-            networkMode: "awsvpc",
-            containerDefinitions: [
+          ECS_CLUSTER=dev-fplarache-smartlib-user-cluster
+          ECS_SERVICE=dev-smartlib-user-service
+          ECS_TASK_DEFINITION=dev-smartlib-user-td
+          IMAGE_NAME=${{ steps.login-ecr.outputs.registry }}/dev-fplarache-smartlib-user-repository:${{ github.sha }}
+
+          # Register a new task definition revision
+          TASK_JSON=$(aws ecs register-task-definition \
+            --family $ECS_TASK_DEFINITION \
+            --network-mode awsvpc \
+            --requires-compatibilities FARGATE \
+            --cpu "256" \
+            --memory "512" \
+            --container-definitions "[
               {
-                name: $NAME,
-                image: $IMAGE,
-                memory: 1024,
-                cpu: 256,
-                essential: true,
-                logConfiguration: {
-                  logDriver: "awslogs",
-                  options: {
-                    "awslogs-group": "/ecs/$FAMILY",
-                    "awslogs-region": env.AWS_REGION,
-                    "awslogs-stream-prefix": "ecs"
+                \"name\": \"user-container\",
+                \"image\": \"$IMAGE_NAME\",
+                \"memory\": 512,
+                \"cpu\": 256,
+                \"essential\": true,
+                \"logConfiguration\": {
+                  \"logDriver\": \"awslogs\",
+                  \"options\": {
+                    \"awslogs-group\": \"/ecs/$ECS_TASK_DEFINITION\",
+                    \"awslogs-region\": \"eu-north-1\",
+                    \"awslogs-stream-prefix\": \"ecs\"
                   }
                 }
               }
-            ],
-            requiresCompatibilities: ["FARGATE"],
-            cpu: "256",
-            memory: "1024"
-          }')
-          echo "$TASK_JSON" > ecs/dev-users-task-definition.json
+            ]")
+          TASK_DEFINITION_ARN=$(echo "$TASK_JSON" | jq -r '.taskDefinition.taskDefinitionArn')
 
-          NEW_TASK_DEFINITION=$(aws ecs register-task-definition --cli-input-json file://ecs/dev-users-task-definition.json --query "taskDefinition.taskDefinitionArn" --output text)
-          echo "new-task-definition=$NEW_TASK_DEFINITION" >> $GITHUB_ENV
-
-      # Step 8: Deploy ECS Service
-      - name: Deploy ECS Service
-        run: |
-          SERVICE_EXISTS=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query "services[0].serviceName" --output text || echo "not_found")
-          if [[ "$SERVICE_EXISTS" == "not_found" ]]; then
-            echo "Creating ECS Service"
-            aws ecs create-service \
-              --cluster $ECS_CLUSTER \
-              --service-name $ECS_SERVICE \
-              --task-definition ${{ env.new-task-definition }} \
-              --desired-count 1 \
-              --launch-type FARGATE \
-              --network-configuration "awsvpcConfiguration={subnets=[subnet-0cf9e8ccfb6fd0f77],securityGroups=[sg-09b08fa0cfc008eba],assignPublicIp=ENABLED}"
-          else
-            echo "Updating ECS Service"
-            aws ecs update-service \
-              --cluster $ECS_CLUSTER \
-              --service $ECS_SERVICE \
-              --task-definition ${{ env.new-task-definition }}
+          # Update ECS Service
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --task-definition $TASK_DEFINITION_ARN \
+            --force-new-deployment
