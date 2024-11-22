@@ -10,8 +10,9 @@ env:
   ECR_REPOSITORY: dev-fplarache-smartlib-users-repo
   ECS_SERVICE: dev-fplarache-smartlib-users-service
   ECS_CLUSTER: dev-fplarache-smartlib-users-cluster
-  ECS_TASK_DEFINITION: dev-users-task-definition # Path to the ECS task definition
+  ECS_TASK_DEFINITION: ecs/dev-users-task-definition.json # Path to the ECS task definition
   CONTAINER_NAME: users-container
+  ECS_TASK_DEFINITION_FAMILY: dev-users-task-definition
 
 jobs:
   deploy:
@@ -68,20 +69,27 @@ jobs:
 
       - name: Ensure ECS Cluster is Active
         run: |
-          aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} || \
-          aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }}
+          cluster_status=$(aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --query "clusters[0].status" --output text)
+            if [[ "$cluster_status" == "INACTIVE" ]]; then
+              aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }}
+            fi
 
-      - name: Ensure ECS Service exists and create if missing
+      - name: Ensure ECS Service exists or update it
         run: |
-          aws ecs describe-services \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }} || \
-            aws ecs create-service \
+          service_exists=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].serviceName" --output text || echo "not_found")
+            if [[ "$service_exists" == "not_found" ]]; then
+              aws ecs create-service \
+                --cluster ${{ env.ECS_CLUSTER }} \
+                --service-name ${{ env.ECS_SERVICE }} \
+                --task-definition ${{ steps.task-def.outputs.task-definition }} \
+                --desired-count 1 \
+                --launch-type FARGATE
+            else
+              aws ecs update-service \
               --cluster ${{ env.ECS_CLUSTER }} \
-              --service-name ${{ env.ECS_SERVICE }} \
-              --task-definition ${{ steps.task-def.outputs.task-definition }} \
-              --desired-count 1 \
-              --launch-type FARGATE
+              --service ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ steps.task-def.outputs.task-definition }}
+            fi
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@df9643053eda01f169e64a0e60233aacca83799a

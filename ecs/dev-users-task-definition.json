@@ -3,10 +3,20 @@
   "containerDefinitions": [
     {
       "name": "users-container",
-      "image": "REPLACE_WITH_IMAGE_URI",
+      "image": "<IMAGE_PLACEHOLDER>",
       "cpu": 256,
-      "memory": 512,
-      "essential": true
+      "memory": 1024,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "protocol": "tcp"
+        }
+      ]
     }
-  ]
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "1024"
 }
