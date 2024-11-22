@@ -1,0 +1,59 @@
+name: "Publish API Image"
+description: "Builds and pushes a Docker image to AWS ECR"
+
+inputs:
+  dockerfile:
+    description: "Path to the Dockerfile"
+    required: true
+    default: "./Dockerfile" # Path to the Dockerfile in the repository
+
+  cmd:
+    description: "Command to run in the container"
+    required: true
+    default: "java -jar target/*.jar"
+
+  image-short-name:
+    description: "Short name for the Docker image (e.g., repo)"
+    required: true
+
+  image-prefix:
+    description: "Prefix for the Docker image name"
+    required: true
+
+  image-tag:
+    description: "Tag for the Docker image (e.g., SHA)"
+    required: true
+
+  ecr-registry:
+    description: "AWS ECR Registry URL"
+    required: true
+
+outputs:
+  image-uri:
+    description: "URI of the pushed Docker image"
+    value: ${{ inputs.ecr-registry }}/${{ inputs.image-prefix }}-${{ inputs.image-short-name }}:${{ inputs.image-tag }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build and push Docker image to AWS ECR
+      shell: bash
+      run: |
+        # Define the full image name
+        IMAGE_NAME="${{ inputs.ecr-registry }}/${{ inputs.image-prefix }}-${{ inputs.image-short-name }}:${{ inputs.image-tag }}"
+
+        # Build the Docker image using the provided Dockerfile
+        docker build -f ${{ inputs.dockerfile }} -t $IMAGE_NAME .
+
+        # Tag the Docker image with 'latest' as well
+        docker tag $IMAGE_NAME ${{ inputs.ecr-registry }}/${{ inputs.image-prefix }}-${{ inputs.image-short-name }}:latest
+
+        # Log in to AWS ECR using AWS CLI
+        aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin ${{ inputs.ecr-registry }}
+
+        # Push the Docker image to AWS ECR
+        docker push $IMAGE_NAME
+        docker push ${{ inputs.ecr-registry }}/${{ inputs.image-prefix }}-${{ inputs.image-short-name }}:latest
+
+        # Output the URI of the pushed Docker image
+        echo "image-uri=$IMAGE_NAME" >> $GITHUB_OUTPUT

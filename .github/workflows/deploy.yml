@@ -35,7 +35,7 @@ jobs:
         id: publish-api-image
         uses: ./.github/actions/publish-api-image
         with:
-          dockerfile: Dockerfile
+          dockerfile: ./Dockerfile
           cmd: java -jar target/*.jar
           image-short-name: repo
           image-prefix: ${{ github.sha }}
