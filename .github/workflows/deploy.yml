@@ -70,26 +70,31 @@ jobs:
       - name: Ensure ECS Cluster is Active
         run: |
           cluster_status=$(aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --query "clusters[0].status" --output text)
-            if [[ "$cluster_status" == "INACTIVE" ]]; then
-              aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }}
-            fi
+          if [[ "$cluster_status" == "INACTIVE" ]]; then
+            aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }}
+          fi
 
       - name: Ensure ECS Service exists or update it
         run: |
           set -e
-          service_exists=$(aws ecs describe-services --cluster dev-fplarache-smartlib-users-cluster --services dev-fplarache-smartlib-users-service --query "services[0].serviceName" --output text || echo "not_found")
+          service_exists=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].serviceName" --output text || echo "not_found")
+
+          # Log task definition and service status for debugging
+          echo "Task Definition: ${{ steps.task-def.outputs.task-definition }}"
+          echo "Service Exists: $service_exists"
+
           if [[ "$service_exists" == "not_found" ]]; then
             aws ecs create-service \
-            --cluster dev-fplarache-smartlib-users-cluster \
-            --service-name dev-fplarache-smartlib-users-service \
-            --task-definition /home/runner/work/_temp/task-definition--2993-gII87ZijwNKQ-.json \
-            --desired-count 1 \
-            --launch-type FARGATE
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service-name ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ steps.task-def.outputs.task-definition }} \
+              --desired-count 1 \
+              --launch-type FARGATE
           else
             aws ecs update-service \
-              --cluster dev-fplarache-smartlib-users-cluster \
-              --service dev-fplarache-smartlib-users-service \
-              --task-definition /home/runner/work/_temp/task-definition--2993-gII87ZijwNKQ-.json
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ steps.task-def.outputs.task-definition }}
           fi
 
       - name: Deploy Amazon ECS task definition
