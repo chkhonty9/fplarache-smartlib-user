@@ -10,7 +10,7 @@ env:
   ECR_REPOSITORY: dev-fplarache-smartlib-users-repo
   ECS_SERVICE: dev-fplarache-smartlib-users-service
   ECS_CLUSTER: dev-fplarache-smartlib-users-cluster
-  ECS_TASK_DEFINITION: ecs/dev-users-task-definition.json # Path to the ECS task definition
+  ECS_TASK_DEFINITION: dev-users-task-definition # Path to the ECS task definition
   CONTAINER_NAME: users-container
 
 jobs:
@@ -66,6 +66,11 @@ jobs:
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
+      - name: Ensure ECS Cluster is Active
+        run: |
+          aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} || \
+          aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
       - name: Ensure ECS Service exists
         run: |
           aws ecs describe-services \
@@ -73,7 +78,7 @@ jobs:
             --services ${{ env.ECS_SERVICE }} || \
             aws ecs create-service \
               --cluster ${{ env.ECS_CLUSTER }} \
-              --service ${{ env.ECS_SERVICE }} \
+              --service-name ${{ env.ECS_SERVICE }} \
               --task-definition ${{ steps.task-def.outputs.task-definition }} \
               --desired-count 1 \
               --launch-type FARGATE
