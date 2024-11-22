@@ -99,7 +99,7 @@ jobs:
             aws ecs create-service \
               --cluster $ECS_CLUSTER \
               --service-name $ECS_SERVICE \
-              --task-definition $new-task-definition \
+              --task-definition ${{ env.new-task-definition }} \
               --desired-count 1 \
               --launch-type FARGATE \
               --network-configuration "awsvpcConfiguration={subnets=[subnet-0cf9e8ccfb6fd0f77],securityGroups=[sg-09b08fa0cfc008eba],assignPublicIp=ENABLED}"
@@ -108,4 +108,4 @@ jobs:
             aws ecs update-service \
               --cluster $ECS_CLUSTER \
               --service $ECS_SERVICE \
-              --task-definition $new-task-definition
+              --task-definition ${{ env.new-task-definition }}
