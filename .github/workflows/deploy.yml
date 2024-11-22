@@ -2,102 +2,95 @@ name: Deploy Maven Project to ECS
 
 on:
   push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+-dev"
-      - "v[0-9]+.[0-9]+.[0-9]+-prod"
+    branches:
+      - main
 
 env:
-  BEFORE_SHA: ${{ github.event.before }}
+  AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+  AWS_ECR_REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
+  ECS_CLUSTER: dev-fplarache-smartlib-user-cluster
+  ECS_SERVICE: dev-smartlib-user-service
+  ECS_TASK_DEFINITION: dev-smartlib-user-td
 
 jobs:
   deploy:
-    name: "Deploy Maven Project"
+    name: Deploy to ECS
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout Repository
+      # Step 1: Checkout Code
       - name: Checkout Code
         uses: actions/checkout@v3
+
+      # Step 2: Set up JDK
+      - name: Set up Java
+        uses: actions/setup-java@v3
         with:
-          fetch-depth: 0
+          java-version: "17"
 
-      # Step 2: Extract Branch Name
-      - name: Extract Branch Name
-        shell: bash
-        run: echo "branch=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
-        id: extract_branch
-
-      # Step 3: Set Variables Based on Environment
-      - name: Set Variables
-        id: vars
+      # Step 3: Build Maven Project
+      - name: Build with Maven
         run: |
-          if [[ "${{ github.ref }}" == *-dev ]]; then
-            echo "environment=dev" >> $GITHUB_OUTPUT
-            echo "awsAccessKey=DEV_ADMIN_AWS_ACCESS_KEY" >> $GITHUB_OUTPUT
-            echo "awsSecretKey=DEV_ADMIN_AWS_SECRET_KEY" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == *-prod ]]; then
-            echo "environment=prod" >> $GITHUB_OUTPUT
-            echo "awsAccessKey=PROD_ADMIN_AWS_ACCESS_KEY" >> $GITHUB_OUTPUT
-            echo "awsSecretKey=PROD_ADMIN_AWS_SECRET_KEY" >> $GITHUB_OUTPUT
-          fi
+          mvn clean package -DskipTests
 
       # Step 4: Configure AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets[steps.vars.outputs.awsAccessKey] }}
-          aws-secret-access-key: ${{ secrets[steps.vars.outputs.awsSecretKey] }}
-          aws-region: "eu-north-1"
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
 
       # Step 5: Login to Amazon ECR
       - name: Login to Amazon ECR
-        id: login-ecr
+        id: ecr-login
         uses: aws-actions/amazon-ecr-login@v1
 
       # Step 6: Build and Push Docker Image
       - name: Build and Push Docker Image
         run: |
-          IMAGE_NAME=dev-fplarache-smartlib-user-repository:latest
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/$IMAGE_NAME .
-          docker push ${{ steps.login-ecr.outputs.registry }}/$IMAGE_NAME
+          IMAGE_URI=${{ secrets.AWS_ECR_REGISTRY }}/dev-fplarache-smartlib-user-repository:latest
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
 
-      # Step 7: Deploy to ECS
-      - name: Deploy ECS Service
+      # Step 7: Register New Task Definition
+      - name: Register Task Definition
+        id: register-task
         run: |
-          ECS_CLUSTER=dev-fplarache-smartlib-user-cluster
-          ECS_SERVICE=dev-smartlib-user-service
-          ECS_TASK_DEFINITION=dev-smartlib-user-td
-          IMAGE_NAME=${{ steps.login-ecr.outputs.registry }}/dev-fplarache-smartlib-user-repository:${{ github.sha }}
-
-          # Register a new task definition revision
-          TASK_JSON=$(aws ecs register-task-definition \
-            --family $ECS_TASK_DEFINITION \
-            --network-mode awsvpc \
-            --requires-compatibilities FARGATE \
-            --cpu "256" \
-            --memory "512" \
-            --container-definitions "[
+          TASK_DEFINITION=$(jq -n --arg IMAGE_URI "${{ secrets.AWS_ECR_REGISTRY }}/dev-fplarache-smartlib-user-repository:latest" \
+          '{
+            family: "dev-smartlib-user-td",
+            networkMode: "awsvpc",
+            containerDefinitions: [
               {
-                \"name\": \"user-container\",
-                \"image\": \"$IMAGE_NAME\",
-                \"memory\": 512,
-                \"cpu\": 256,
-                \"essential\": true,
-                \"logConfiguration\": {
-                  \"logDriver\": \"awslogs\",
-                  \"options\": {
-                    \"awslogs-group\": \"/ecs/$ECS_TASK_DEFINITION\",
-                    \"awslogs-region\": \"eu-north-1\",
-                    \"awslogs-stream-prefix\": \"ecs\"
+                name: "dev-smartlib-user-container",
+                image: $IMAGE_URI,
+                memory: 512,
+                cpu: 256,
+                essential: true,
+                logConfiguration: {
+                  logDriver: "awslogs",
+                  options: {
+                    "awslogs-group": "/ecs/dev-smartlib-user",
+                    "awslogs-region": env.AWS_REGION,
+                    "awslogs-stream-prefix": "ecs"
                   }
                 }
               }
-            ]")
-          TASK_DEFINITION_ARN=$(echo "$TASK_JSON" | jq -r '.taskDefinition.taskDefinitionArn')
+            ],
+            requiresCompatibilities: ["FARGATE"],
+            cpu: "256",
+            memory: "512"
+          }')
+          echo "$TASK_DEFINITION" > task-definition.json
 
-          # Update ECS Service
+          NEW_TASK_DEFINITION=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query "taskDefinition.taskDefinitionArn" --output text)
+          echo "NEW_TASK_DEFINITION=$NEW_TASK_DEFINITION" >> $GITHUB_ENV
+
+      # Step 8: Update ECS Service
+      - name: Update ECS Service
+        run: |
           aws ecs update-service \
             --cluster $ECS_CLUSTER \
             --service $ECS_SERVICE \
-            --task-definition $TASK_DEFINITION_ARN \
-            --force-new-deployment
+            --task-definition ${{ env.NEW_TASK_DEFINITION }}
