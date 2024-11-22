@@ -52,9 +52,9 @@ jobs:
         with:
           dockerfile: ./Dockerfile
           cmd: java -jar target/*.jar
-          image-short-name: repo
-          image-prefix: ${{ github.sha }}
-          image-tag: ${{ github.sha }}
+          #image-short-name: repo
+          #image-prefix: ${{ github.sha }}
+          image-tag: latest
           ecr-registry: ${{ secrets.AWS_ECR_REGISTRY }}
 
       # Step 7: Deploy ECS - Maven
