@@ -50,11 +50,11 @@ jobs:
         id: publish-api-image
         uses: ./.github/actions/publish-api-image
         with:
-          dockerfile: Dockerfile
+          dockerfile: ./Dockerfile
           cmd: java -jar target/*.jar
           image-short-name: repo
           image-prefix: ${{ github.sha }}
-          image-tag: ${{ github.sha }}
+          image-tag: latest,${{ github.sha }}
           ecr-registry: ${{ secrets.AWS_ECR_REGISTRY }}
 
       # Step 7: Deploy ECS - Maven
