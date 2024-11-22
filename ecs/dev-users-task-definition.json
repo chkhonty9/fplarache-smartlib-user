@@ -1,0 +1,12 @@
+{
+  "family": "dev-users-task-definition",
+  "containerDefinitions": [
+    {
+      "name": "users-container",
+      "image": "REPLACE_WITH_IMAGE_URI",
+      "cpu": 256,
+      "memory": 512,
+      "essential": true
+    }
+  ]
+}

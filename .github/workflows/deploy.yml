@@ -6,12 +6,12 @@ on:
       - main
 
 env:
-  AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }} # set this to your preferred AWS region, e.g. us-west-1
-  ECR_REPOSITORY: dev-fplarache-smartlib-users-repo # set this to your Amazon ECR repository name
-  ECS_SERVICE: dev-fplarache-smartlib-users-service # set this to your Amazon ECS service name
-  ECS_CLUSTER: dev-fplarache-smartlib-users-cluster # set this to your Amazon ECS cluster name
-  ECS_TASK_DEFINITION: dev-users-task-definition # set this to the path to your Amazon ECS task definition
-  CONTAINER_NAME: users-container # set this to the name of the container in the containerDefinitions section of your task definition
+  AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+  ECR_REPOSITORY: dev-fplarache-smartlib-users-repo
+  ECS_SERVICE: dev-fplarache-smartlib-users-service
+  ECS_CLUSTER: dev-fplarache-smartlib-users-cluster
+  ECS_TASK_DEFINITION: ecs/dev-users-task-definition.json # Path to the ECS task definition
+  CONTAINER_NAME: users-container
 
 jobs:
   deploy:
@@ -21,23 +21,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: "17"
-          distribution: "temurin"
-
-      - name: Cache Maven dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      - name: Build with Maven
-        run: mvn clean install
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@0e613a0980cbf65ed5b322eb7a1e075d28913a83
@@ -56,7 +39,6 @@ jobs:
           ECR_REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build a docker container and push it to ECR
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
@@ -65,7 +47,7 @@ jobs:
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@c804dfbdd57f713b6c079302a4c01db7017a36fc
         with:
-          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          task-definition: ${{ env.ECS_TASK_DEFINITION }} # Correct path
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
