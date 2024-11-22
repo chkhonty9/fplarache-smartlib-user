@@ -1,0 +1,52 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+-dev"
+      - "v[0-9]+.[0-9]+.[0-9]+-prod"
+
+env:
+  BEFORE_SHA: ${{ github.event.before }}
+
+jobs:
+  setup:
+    name: "Deploy Maven Project"
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # Step 2: Set up Java
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      # Step 3: Build Maven project
+      - name: Build Maven project
+        run: |
+          mvn clean install -DskipTests
+      # Step 4: Publish API image - Maven
+      - name: Publish API image - Maven
+        id: publish-api-image
+        uses: ./.github/actions/publish-api-image
+        with:
+          dockerfile: Dockerfile
+          cmd: java -jar target/*.jar
+          image-short-name: repo
+          image-prefix: ${{ github.sha }}
+          image-tag: ${{ github.sha }}
+          ecr-registry: ${{ secrets.AWS_ECR_REGISTRY }}
+      # Step 5: Deploy ECS - Maven
+      - name: Deploy ECS - Maven
+        env:
+          ECS_CLUSTER: ${{ github.sha }}-fgcluster
+          ECS_SERVICE: ${{ github.sha }}-fgservice
+        run: |
+          TASK_JSON="$(aws ecs update-service --force-new-deployment --cluster ${ECS_CLUSTER} --service ${ECS_SERVICE})"
+          TASK_ARN="$(printf '%s' "${TASK_JSON}"|jq -r '.service.deployments[0].id')"
+          echo "deployment-arn=$TASK_ARN" >> $GITHUB_OUTPUT
