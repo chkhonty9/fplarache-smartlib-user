@@ -6,11 +6,13 @@ on:
 
 env:
   BEFORE_SHA: ${{ github.event.before }}
-  REGION: "eu-west-1"
+  REGION: "eu-north-1"
   ECS_CLUSTER: "dev-fplarache-smartlib-user-cluster"
   ECS_SERVICE: "dev-smartlib-user-service"
-  TASK_DEFINITION: "dev-smartlib-user-td"
-  IMAGE_URI: "dev-fplarache-smartlib-user-repository:latest"
+  ECR_REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
+  ECS_TASK_DEFINITION: "dev-smartlib-user-td"
+  ECR_REPOSITORY: "dev-fplarache-smartlib-user-repository"
+  CONTAINER_NAME: "dev-fplarache-smartlib-user-container"
 
 jobs:
   setup:
@@ -23,16 +25,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install JDK 8
+      - name: Install JDK 17
         uses: actions/setup-java@v3
         with:
           distribution: "temurin"
           java-version: "17"
-
-      - name: Install Maven
-        uses: actions/setup-java@v3
-        with:
-          maven-version: "3.8.4"
 
       - name: Set AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -42,50 +39,36 @@ jobs:
           aws-region: ${{ env.REGION }}
 
       - name: Login to Amazon ECR
+        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build with Maven
-        run: mvn clean install
+        run: mvn clean package -DskipTests
 
       - name: Publish Docker image
-        id: publish-image
+        id: build-image
+        env:
+          IMAGE_TAG: latest
         run: |
-          docker build -t ${{ env.IMAGE_URI }} .
-          docker push ${{ env.IMAGE_URI }}
+          # Build a docker container and
+          # push it to ECR so that it can
+          # be deployed to ECS.
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Register ECS Task Definition
-        run: |
-          TASK_DEFINITION_JSON=$(jq -n --arg IMAGE_URI "${{ env.IMAGE_URI }}" \
-            '{
-              family: "dev-smartlib-user-td",
-              networkMode: "awsvpc",
-              containerDefinitions: [
-                {
-                  name: "dev-smartlib-user-container",
-                  image: $IMAGE_URI,
-                  memory: 512,
-                  cpu: 256,
-                  essential: true,
-                  logConfiguration: {
-                    logDriver: "awslogs",
-                    options: {
-                      "awslogs-group": "/ecs/dev-smartlib-user",
-                      "awslogs-region": $REGION,
-                      "awslogs-stream-prefix": "ecs"
-                    }
-                  }
-                }
-              ],
-              requiresCompatibilities: ["FARGATE"],
-              cpu: "256",
-              memory: "512",
-              executionRoleArn: "arn:aws:iam::YOUR_ACCOUNT_ID:role/AmazonECS_FargateTaskExecutionRole"
-            }')
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
 
-          echo "$TASK_DEFINITION_JSON" > ecs/task-definition.json
-          NEW_TASK_DEFINITION=$(aws ecs register-task-definition --cli-input-json file://ecs/task-definition.json --query "taskDefinition.taskDefinitionArn" --output text)
-          echo "NEW_TASK_DEFINITION=$NEW_TASK_DEFINITION" >> $GITHUB_ENV
-
-      - name: Deploy ECS Service
-        run: |
-          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --force-new-deployment
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
