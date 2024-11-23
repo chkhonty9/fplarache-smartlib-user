@@ -12,7 +12,7 @@ env:
   ECR_REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
   ECS_TASK_DEFINITION: "ecs/dev-users-task-definition.json"
   ECR_REPOSITORY: "dev-fplarache-smartlib-user-repository"
-  CONTAINER_NAME: "dev-fplarache-smartlib-user-container"
+  CONTAINER_NAME: "users-container"
 
 jobs:
   setup:
