@@ -1,9 +1,10 @@
 {
   "family": "dev-users-task-definition",
+  "executionRoleArn": "arn:aws:iam::774305596814:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "users-container",
-      "image": "<IMAGE_PLACEHOLDER>",
+      "image": "774305596814.dkr.ecr.eu-north-1.amazonaws.com/dev-fplarache-smartlib-user-repository:latest",
       "cpu": 256,
       "memory": 1024,
       "essential": true,
