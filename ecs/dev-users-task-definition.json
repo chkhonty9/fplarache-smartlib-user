@@ -1,23 +1,92 @@
 {
-  "family": "dev-users-task-definition",
-  "executionRoleArn": "arn:aws:iam::774305596814:role/ecsTaskExecutionRole",
+  "taskDefinitionArn": "arn:aws:ecs:eu-north-1:774305596814:task-definition/dev-fplarache-smart-lib-users-tasks",
   "containerDefinitions": [
     {
-      "name": "users-container",
-      "image": "774305596814.dkr.ecr.eu-north-1.amazonaws.com/dev-fplarache-smartlib-user-repository:latest",
-      "cpu": 256,
-      "memory": 1024,
-      "essential": true,
+      "name": "dev-fplarache-smart-lib-users",
+      "image": "774305596814.dkr.ecr.eu-north-1.amazonaws.com/dev-fplarache-smart-lib-users-repo:latest",
+      "cpu": 0,
       "portMappings": [
         {
+          "name": "dev-fplarache-smart-lib-users-8080-tcp",
+          "containerPort": 8080,
+          "hostPort": 8080,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        },
+        {
+          "name": "dev-fplarache-smart-lib-users-80-tcp",
           "containerPort": 80,
-          "protocol": "tcp"
+          "hostPort": 80,
+          "protocol": "tcp",
+          "appProtocol": "http"
         }
-      ]
+      ],
+      "essential": true,
+      "environment": [],
+      "environmentFiles": [],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "ulimits": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/dev-fplarache-smart-lib-users-tasks",
+          "mode": "non-blocking",
+          "awslogs-create-group": "true",
+          "max-buffer-size": "25m",
+          "awslogs-region": "eu-north-1",
+          "awslogs-stream-prefix": "ecs"
+        },
+        "secretOptions": []
+      },
+      "systemControls": []
     }
   ],
-  "requiresCompatibilities": ["FARGATE"],
+  "family": "dev-fplarache-smart-lib-users-tasks",
+  "executionRoleArn": "arn:aws:iam::774305596814:role/ecsTaskExecutionRole",
   "networkMode": "awsvpc",
+  "revision": 6,
+  "volumes": [],
+  "status": "ACTIVE",
+  "requiresAttributes": [
+    {
+      "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+    },
+    {
+      "name": "ecs.capability.execution-role-awslogs"
+    },
+    {
+      "name": "com.amazonaws.ecs.capability.ecr-auth"
+    },
+    {
+      "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+    },
+    {
+      "name": "com.amazonaws.ecs.capability.docker-remote-api.1.28"
+    },
+    {
+      "name": "ecs.capability.execution-role-ecr-pull"
+    },
+    {
+      "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+    },
+    {
+      "name": "ecs.capability.task-eni"
+    },
+    {
+      "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+    }
+  ],
+  "placementConstraints": [],
+  "compatibilities": ["EC2", "FARGATE"],
+  "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
-  "memory": "1024"
+  "memory": "1024",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "registeredAt": "2024-11-20T21:32:45.548Z",
+  "registeredBy": "arn:aws:iam::774305596814:user/chkhonty.nouhaila@etu.uae.ac.ma",
+  "tags": []
 }
