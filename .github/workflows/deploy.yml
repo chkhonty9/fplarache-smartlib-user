@@ -10,7 +10,7 @@ env:
   ECS_CLUSTER: "dev-fplarache-smartlib-user-cluster"
   ECS_SERVICE: "dev-smartlib-user-service"
   ECR_REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
-  ECS_TASK_DEFINITION: "dev-smartlib-user-td"
+  ECS_TASK_DEFINITION: "ecs/dev-users-task-definition.json"
   ECR_REPOSITORY: "dev-fplarache-smartlib-user-repository"
   CONTAINER_NAME: "dev-fplarache-smartlib-user-container"
 
