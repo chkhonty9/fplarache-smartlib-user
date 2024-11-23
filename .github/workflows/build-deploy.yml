@@ -70,8 +70,8 @@ jobs:
             echo "aspnetCoreEnvironment=Development" >> $GITHUB_OUTPUT
             
           elif  [ "${ENVIRONMENT}" = "prod" ]; then
-            echo "awsAccessKey=AWS_ACCESS_KEY_ID" >> $GITHUB_OUTPUT
-            echo "awsSecretKey=AWS_SECRET_ACCESS_KEY" >> $GITHUB_OUTPUT
+            echo "awsAccessKey=${{ secrets.AWS_ACCESS_KEY_ID}}" >> $GITHUB_OUTPUT
+            echo "awsSecretKey=${{ secrets.AWS_SECRET_ACCESS_KEY}}" >> $GITHUB_OUTPUT
             echo "awsDefaultRegion=eu-north-1" >> $GITHUB_OUTPUT
             echo "aspnetCoreEnvironment=Production" >> $GITHUB_OUTPUT
           fi
