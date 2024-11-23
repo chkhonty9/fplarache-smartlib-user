@@ -1,0 +1,118 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Deploy
+# version 7
+# Controls when the action will run. Triggers the workflow on push or pull request
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+-dev"
+      - "v[0-9]+.[0-9]+.[0-9]+-prod"
+
+env:
+  BEFORE_SHA: ${{ github.event.before }}
+  # REGION: YOUR_SERVICE_REGION
+jobs:
+  setup:
+    name: "Deploy"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Extract branch name
+        shell: bash
+        run: echo "branch=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+        id: extract_branch
+
+      - name: Fetch branch history
+        run: git fetch origin ${{ steps.extract_branch.outputs.branch }}
+
+      - name: Is Prerelease
+        uses: winterjung/split@v2
+        id: split_pre
+        with:
+          msg: ${{ steps.extract_branch.outputs.branch }}
+          separator: "-"
+
+      - name: Install JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: maven
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Set vars
+        id: vars
+        env:
+          ENVIRONMENT: ${{ steps.split_pre.outputs._1 }}
+          APPLICATION: fplarache-smartlib
+          SERVICE: users
+        run: |
+          echo "environment=${ENVIRONMENT}" >> $GITHUB_OUTPUT
+          echo "application=${APPLICATION}" >> $GITHUB_OUTPUT
+          echo "service=${SERVICE}" >> $GITHUB_OUTPUT
+          echo "${ENVIRONMENT}"
+          if  [ "${ENVIRONMENT}" = "dev" ]; then
+            echo "awsAccessKey=AWS_ACCESS_KEY" >> $GITHUB_OUTPUT
+            echo "awsSecretKey=AWS_SECRET_KEY" >> $GITHUB_OUTPUT
+            echo "awsDefaultRegion=eu-north-1" >> $GITHUB_OUTPUT
+            echo "aspnetCoreEnvironment=Development" >> $GITHUB_OUTPUT
+            
+          elif  [ "${ENVIRONMENT}" = "prod" ]; then
+            echo "awsAccessKey=AWS_ACCESS_KEY_ID" >> $GITHUB_OUTPUT
+            echo "awsSecretKey=AWS_SECRET_ACCESS_KEY" >> $GITHUB_OUTPUT
+            echo "awsDefaultRegion=eu-north-1" >> $GITHUB_OUTPUT
+            echo "aspnetCoreEnvironment=Production" >> $GITHUB_OUTPUT
+          fi
+          echo "fullServiceName=${ENVIRONMENT}-${APPLICATION}-${SERVICE}" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        id: creds
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets[steps.vars.outputs.awsAccessKey] }}
+          aws-secret-access-key: ${{ secrets[steps.vars.outputs.awsSecretKey] }}
+          aws-region: "eu-north-1"
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+
+      ###############################
+      # WebAPI
+      ###############################
+
+      - name: Publish API image - Maven Project
+        id: publish-api-image
+        uses: ./.github/actions/publish-api-image
+        with:
+          jar-file: target/*.jar
+          dockerfile: ./Dockerfile
+          cmd: java -jar /app.jar
+          image-short-name: repo
+          image-prefix: ${{ steps.vars.outputs.fullServiceName }}
+          image-tag: ${{ github.sha }}
+          ecr-registry: ${{ steps.login-ecr.outputs.registry }}
+
+      - name: Deploy ECS - WebApi
+        env:
+          ECS_CLUSTER: ${{ steps.vars.outputs.fullServiceName }}-fgcluster
+          ECS_SERVICE: ${{ steps.vars.outputs.fullServiceName }}-fgservice
+        run: |
+          TASK_JSON="$(aws ecs update-service --force-new-deployment --cluster ${ECS_CLUSTER} --service ${ECS_SERVICE})"
+          TASK_ARN="$(printf '%s' "${TASK_JSON}"|jq -r '.service.deployments[0].id')"
+          echo "deployment-arn=$TASK_ARN" >> $GITHUB_OUTPUT
