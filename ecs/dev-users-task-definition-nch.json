@@ -1,0 +1,26 @@
+{
+  "taskDefinitionArn": "arn:aws:ecs:eu-north-1:774305596814:task-definition/dev-fplarache-smartlib-users-td-nch",
+  "containerDefinitions": [
+    {
+      "name": "dev-smartlib-users-container",
+      "image": "774305596814.dkr.ecr.eu-north-1.amazonaws.com/dev-fplarache-smartlib-users-nch-repo:latest",
+      "cpu": 256,
+      "memory": 512,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ]
+    }
+  ],
+  "family": "dev-fplarache-smartlib-users-td-nch",
+  "executionRoleArn": "arn:aws:iam::774305596814:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512"
+}
